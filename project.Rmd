@@ -1,0 +1,147 @@
+## Practical Machine Learning Project
+#### By Zach Fetterman
+
+### Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+
+### Initialization
+
+```{r message=FALSE, warning=FALSE}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+
+set.seed(42)
+```
+
+
+
+### Loading the Data
+
+Read the files and handle NAs.
+
+```{r}
+training <- read.csv("pml-training.csv", na.strings=c("NA", "#DIV/0!", ""))
+testing <- read.csv("pml-testing.csv", na.strings=c("NA", "#DIV/0!", ""))
+```
+
+
+
+### Cleaning the Data
+
+Partition and clean the data to make it usable for our analysis.
+
+```{r}
+# create 2 sets, one for training (60%) and one for testing (40%)
+
+train <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+myTraining <- training[train,]
+myTesting <- training[-train,]
+
+
+# only include varaibles whose variance is not near zero.
+
+vars <- names(myTraining) %in% c("new_window", "kurtosis_roll_belt", "kurtosis_picth_belt", "kurtosis_yaw_belt", "skewness_roll_belt", "skewness_roll_belt.1", "skewness_yaw_belt", "max_yaw_belt", "min_yaw_belt", "amplitude_yaw_belt", "avg_roll_arm", "stddev_roll_arm", "var_roll_arm", "avg_pitch_arm", "stddev_pitch_arm", "var_pitch_arm", "avg_yaw_arm", "stddev_yaw_arm", "var_yaw_arm", "kurtosis_roll_arm", "kurtosis_picth_arm", "kurtosis_yaw_arm", "skewness_roll_arm", "skewness_pitch_arm", "skewness_yaw_arm", "max_roll_arm", "min_roll_arm", "min_pitch_arm", "amplitude_roll_arm", "amplitude_pitch_arm", "kurtosis_roll_dumbbell", "kurtosis_picth_dumbbell", "kurtosis_yaw_dumbbell", "skewness_roll_dumbbell", "skewness_pitch_dumbbell", "skewness_yaw_dumbbell", "max_yaw_dumbbell", "min_yaw_dumbbell", "amplitude_yaw_dumbbell", "kurtosis_roll_forearm", "kurtosis_picth_forearm", "kurtosis_yaw_forearm", "skewness_roll_forearm", "skewness_pitch_forearm", "skewness_yaw_forearm", "max_roll_forearm", "max_yaw_forearm", "min_roll_forearm", "min_yaw_forearm", "amplitude_roll_forearm", "amplitude_yaw_forearm", "avg_roll_forearm", "stddev_roll_forearm", "var_roll_forearm", "avg_pitch_forearm", "stddev_pitch_forearm", "var_pitch_forearm", "avg_yaw_forearm", "stddev_yaw_forearm", "var_yaw_forearm")
+
+myTraining <- myTraining[!vars]
+
+
+# remove the first row containing the variable names
+myTraining <- myTraining[c(-1)]
+
+
+# remove variables with more than 50% NA values.
+
+temp <- myTraining
+
+for(i in 1:length(myTraining))
+  {
+  if(sum(is.na(myTraining[, i])) / nrow(myTraining) >= .50)
+    {
+    for(j in 1:length(temp))
+      {
+      if(length(grep(names(myTraining[i]), names(temp)[j])) == 1)
+        {
+        temp <- temp[, -j]
+        }   
+      }
+    }
+  }
+
+myTraining <- temp
+rm(temp)
+
+myTesting <- myTesting[colnames(myTraining)]
+testing <- testing[colnames(myTraining[, -58])]
+
+
+# coerce all of the data into the same type
+
+for (i in 1:length(testing))
+  {
+  for(j in 1:length(myTraining))
+      {
+      if(length(grep(names(myTraining[i]), names(testing)[j])) == 1)
+          {
+          class(testing[j]) <- class(myTraining[i])
+          }      
+      }      
+  }
+
+testing <- rbind(myTraining[2, -58], testing)
+testing <- testing[-1,]
+```
+
+
+
+### Results (Decision Tree)
+
+First, we will try to predict using a decision tree.
+
+```{r}
+fit1 <- rpart(classe ~ ., data=myTraining, method="class")
+
+# produce a graphical representation of the decision tree
+fancyRpartPlot(fit1)
+
+pred1 <- predict(fit1, myTesting, type="class")
+confusionMatrix(pred1, myTesting$classe)
+```
+
+
+### Results (Random Forests)
+
+Next, we will attempt the same prediction using random forests.
+
+```{r}
+fit2 <- randomForest(classe ~ ., data=myTraining)
+pred2 <- predict(fit2, myTesting, type="class")
+confusionMatrix(pred2, myTesting$classe)
+```
+
+
+
+### Generate Output Files
+
+These files will be used to submit online for grading.
+
+```{r}
+pred <- predict(fit2, testing, type="class")
+
+pml_write_files = function(x)
+  {
+  for(i in 1:length(x))
+    {
+    filename = paste0("problem_id_", i, ".txt")
+    write.table(x[i], file=filename, quote=FALSE, row.names=FALSE, col.names=FALSE)
+    }
+  }
+
+pml_write_files(pred)
+```
